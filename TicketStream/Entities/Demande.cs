@@ -5,7 +5,7 @@ namespace TicketStream.Entities
         public Guid Id { get; set; } = Guid.NewGuid();
         public string Title { get; set; } = null!;
         public string Description { get; set; } = null!;
-        public string Status { get; set; } = "En attente"; // En attente, En cours, Terminé
+        public DemandeStatus Status { get; set; } = DemandeStatus.EnAttente;
 
         public Guid UserId { get; set; }       // FK vers User
         public User User { get; set; } = null!;
