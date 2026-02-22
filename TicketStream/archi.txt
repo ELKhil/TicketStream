@@ -1,0 +1,63 @@
+﻿
++--------------------------------------------------+
+|                     User                         |
++--------------------------------------------------+
+| Id : int                                         |
+| Name : string                                    |
+| Email : string                                   |
+| Role : UserRole (ROLE_USER, ROLE_AGENT)         |
+| Actif : bool                                     |
++--------------------------------------------------+
+
++--------------------------------------------------+
+|                    Demande                       |
++--------------------------------------------------+
+| Id : int                                         |
+| Title : string                                   |
+| Description : string                             |
+| Status : string                                  |
+|                                                  |
+| UserId : int                                     |
+| AssignedAgentId : int?                           |
+| AssignedAt : DateTime?                           |
+|                                                  |
+| CreatedAt : DateTime                             |
+| CreatedById : int                                |
+| UpdatedAt : DateTime?                            |
+| UpdatedById : int?                               |
+| DeletedAt : DateTime?                            |
+| DeletedById : int?                               |
++--------------------------------------------------+
+
+
++--------------------------------------------------+
+|                   Commentaire                    |
++--------------------------------------------------+
+| Id : int                                         |
+| Contenu : string                                 |
+|                                                  |
+| DemandeId : int                                  |
+| UserId : int                                     |
+|                                                  |
+| CreatedAt : DateTime                             |
+| DeletedAt : DateTime?                            |
+| DeletedById : int?                               |
++--------------------------------------------------+
+
+
+Les relations entre les entities:
+
+                User 1 -------- 0..* Demande
+                User (ROLE_AGENT) 1 -------- 0..* Demande
+                User 1 -------- 0..* Demande
+                Demande 1 -------- 0..* Commentaire
+                User 1 -------- 0..* Commentaire
+
+Vu Globale :
+                        User
+                 ├── crée → Demande
+                 ├── est assigné à → Demande
+                 └── écrit → Commentaire
+
+                Demande
+                 └── contient → Commentaire
