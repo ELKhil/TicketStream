@@ -1,0 +1,39 @@
+@implements IDisposable
+@inject ToastService ToastService
+
+<!-- Conteneur fixe en haut à droite pour les notifications toast -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999">
+    @foreach (var toast in ToastService.Toasts.ToList())
+    {
+        <div class="toast show align-items-center text-white border-0 mb-2 @ClasseToast(toast.Type)"
+             role="alert" aria-live="assertive">
+            <div class="d-flex">
+                <div class="toast-body fw-semibold">@toast.Message</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        @onclick="() => ToastService.Fermer(toast.Id)">
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // Abonne le composant aux changements du service pour forcer un re-rendu
+    protected override void OnInitialized()
+        => ToastService.OnChange += Rafraichir;
+
+    // InvokeAsync garantit l'appel sur le thread du circuit Blazor Server
+    private void Rafraichir() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => ToastService.OnChange -= Rafraichir;
+
+    // Retourne la classe Bootstrap correspondant au type de toast
+    private static string ClasseToast(string type) => type switch
+    {
+        "success" => "bg-success",
+        "danger"  => "bg-danger",
+        "warning" => "bg-warning text-dark",
+        _         => "bg-secondary"
+    };
+}

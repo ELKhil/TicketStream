@@ -1,0 +1,86 @@
+@page "/login"
+@inject AuthApiService AuthApi
+@inject NavigationManager Nav
+@inject UserState UserState
+@inject ToastService Toast
+
+<AuthorizeView>
+    <Authorized>
+        <!-- Redirige immédiatement si l'utilisateur est déjà authentifié -->
+        <RedirectTo Page="/demandes" />
+    </Authorized>
+    <NotAuthorized Context="_">
+        <div class="form-card card shadow-sm">
+            <div class="card-body p-4">
+                <h4 class="card-title mb-4 text-center">
+                    <i class="bi bi-box-arrow-in-right me-2"></i>Connexion
+                </h4>
+
+                <EditForm Model="@modele" OnValidSubmit="Connecter">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <InputText @bind-Value="modele.Email" class="form-control" type="email"
+                                   placeholder="votre@email.com" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Mot de passe</label>
+                        <InputText @bind-Value="modele.Password" class="form-control" type="password"
+                                   placeholder="••••••••" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 mt-1" disabled="@chargement">
+                        @if (chargement)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                            <span>Connexion en cours…</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-arrow-right-circle me-1"></i>
+                            <span>Se connecter</span>
+                        }
+                    </button>
+                </EditForm>
+
+                <hr />
+                <p class="text-center mb-0 small">
+                    Pas encore de compte ?
+                    <a href="/register">S'inscrire</a>
+                </p>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private LoginModele modele = new();
+    private bool chargement;
+
+    // Appelle le service d'authentification et redirige en cas de succès
+    private async Task Connecter()
+    {
+        chargement = true;
+
+        var resultat = await AuthApi.ConnecterAsync(modele.Email, modele.Password);
+
+        if (resultat == null)
+        {
+            Nav.NavigateTo("/demandes");
+        }
+        else
+        {
+            Toast.Show(resultat, "danger");
+            chargement = false;
+        }
+    }
+
+    // Modèle de formulaire de connexion
+    private class LoginModele
+    {
+        public string Email    { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

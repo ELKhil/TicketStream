@@ -44,17 +44,17 @@ TicketStream/              # Single project inside the solution
 Entities currently in code:
 
 - **`User`** – `Id`, `Name`, `Email`, `Role` (`UserRole` enum: `ROLE_USER`/`ROLE_AGENT`), `Actif`
-- **`Demande`** – Ticket with `Title`, `Description`, `Status` ("En attente", "En cours", "Terminé"), FK `UserId` → `User`, FK `AssignedAgentId` → `User` (nullable), `AssignedAt`. Full audit trail: `CreatedAt/By`, `UpdatedAt/By`, `DeletedAt/By`.
+- **`Demande`** – Ticket with `Title`, `Description`, `Status` (`DemandeStatus` enum: `EnAttente`/`EnCours`/`Termine`, stored in DB as French strings via ValueConverter), FK `UserId` → `User`, FK `AssignedAgentId` → `User` (nullable), `AssignedAt`. Full audit trail: `CreatedAt`, `UpdatedAt/By`, `DeletedAt/By`.
 - **`Commentaire`** – Commentaire lié à une `Demande` et un `User`. Champs : `Contenu`, `CreatedAt`, soft-delete (`DeletedAt`, `DeletedById`).
+- **`DemandeStatus`** – Enum (`EnAttente`, `EnCours`, `Termine`). Stored in DB as `"En attente"`, `"En cours"`, `"Terminé"` via a `ValueConverter` in `TicketStreamContext`.
 
 ### Key patterns
 
 - **Soft delete**: `Demande.DeletedAt` is `null` when active. All queries filter with `.Where(d => d.DeletedAt == null)`. DELETE sets `DeletedAt`/`DeletedById` instead of removing the row.
-- **Audit trail**: `Demande` tracks who created, last updated, and deleted it via nullable FK fields pointing back to `User`.
-- **No authentication yet**: `CreatedById`/`UpdatedById`/`DeletedById` are currently set from the request body (`UserId` field). This is a known placeholder noted in controller comments.
+- **Audit trail**: `Demande` tracks who last updated and deleted it via nullable FK fields pointing back to `User`. `UpdatedById`/`DeletedById` are set from the JWT token of the authenticated user.
+- **Enum storage**: Both `UserRole` and `DemandeStatus` are stored as strings in the database via `HasConversion` in `TicketStreamContext`.
 - **Swagger at root**: In development, Swagger UI is served at `/` (`RoutePrefix = string.Empty`).
 
 ### Notes
 
-- **`Historique`** entity has been abandoned. The `Historiques` table still exists in the database (from initial migrations) but is no longer managed by EF Core.
-- The `DemandesController` still references `.Include(d => d.Historiques)` — this needs to be cleaned up.
+- **`Historique`** entity has been abandoned. The `Historiques` table still exists in the database (from initial migrations) but is no longer managed by EF Core and is no longer referenced in any controller.

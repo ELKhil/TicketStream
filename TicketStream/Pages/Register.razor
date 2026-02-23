@@ -1,0 +1,86 @@
+@page "/register"
+@inject AuthApiService AuthApi
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+<div class="form-card card shadow-sm">
+    <div class="card-body p-4">
+        <h4 class="card-title mb-4 text-center">
+            <i class="bi bi-person-plus me-2"></i>Créer un compte
+        </h4>
+
+        <EditForm Model="@modele" OnValidSubmit="Inscrire">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label class="form-label">Nom complet</label>
+                <InputText @bind-Value="modele.Name" class="form-control" placeholder="Jean Dupont" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Email</label>
+                <InputText @bind-Value="modele.Email" class="form-control" type="email"
+                           placeholder="votre@email.com" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Mot de passe</label>
+                <InputText @bind-Value="modele.Password" class="form-control" type="password"
+                           placeholder="••••••••" />
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100 mt-1" disabled="@chargement">
+                @if (chargement)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                    <span>Inscription en cours…</span>
+                }
+                else
+                {
+                    <i class="bi bi-check-circle me-1"></i>
+                    <span>Créer le compte</span>
+                }
+            </button>
+        </EditForm>
+
+        <hr />
+        <p class="text-center mb-0 small">
+            Déjà un compte ?
+            <a href="/login">Se connecter</a>
+        </p>
+    </div>
+</div>
+
+@code {
+    private RegisterModele modele = new();
+    private bool chargement = false;
+
+    // Appelle le service d'inscription et redirige vers /login en cas de succès
+    private async Task Inscrire()
+    {
+        chargement = true;
+
+        // Le rôle est toujours ROLE_USER, non exposé à l'utilisateur
+        var resultat = await AuthApi.InscrireAsync(modele.Name, modele.Email, modele.Password);
+
+        chargement = false;
+
+        if (resultat == null)
+        {
+            Toast.Show("Compte créé avec succès ! Connectez-vous.", "success");
+            Nav.NavigateTo("/login");
+        }
+        else
+        {
+            Toast.Show(resultat, "danger");
+        }
+    }
+
+    // Modèle de formulaire d'inscription
+    private class RegisterModele
+    {
+        public string Name     { get; set; } = "";
+        public string Email    { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

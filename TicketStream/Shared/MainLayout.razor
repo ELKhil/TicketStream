@@ -1,0 +1,133 @@
+@inherits LayoutComponentBase
+@inject JwtAuthStateProvider AuthProvider
+@inject UserState UserState
+@inject UserApiService UserApi
+@inject NavigationManager Nav
+
+<ToastContainer />
+
+<div class="app-layout">
+
+    <!-- ===== HEADER ===== -->
+    <header class="app-header">
+
+        <!-- Logo -->
+        <a href="/" class="header-brand">
+            <span class="brand-icon"><i class="bi bi-ticket-detailed-fill"></i></span>
+            <span class="brand-name">TicketStream</span>
+        </a>
+
+        <!-- Informations utilisateur connecté -->
+        <AuthorizeView>
+            <Authorized>
+                <div class="header-right">
+
+                    @if (!UserState.IsAgent)
+                    {
+                        <!-- Bouton Créer une demande (ROLE_USER uniquement) — masqué sur mobile -->
+                        <a href="/demandes/creer" class="btn btn-sm btn-success me-3 d-none d-sm-inline-flex align-items-center">
+                            <i class="bi bi-plus-lg me-1"></i>Créer une demande
+                        </a>
+                    }
+
+                    <!-- Bloc utilisateur -->
+                    <div class="header-user-block">
+
+                        <!-- Avatar avec initiale -->
+                        <div class="user-avatar">
+                            @(UserState.Name.Length > 0 ? UserState.Name[0].ToString().ToUpper() : "?")
+                        </div>
+
+                        <!-- Nom + email -->
+                        <div class="user-details">
+                            <span class="user-name">@UserState.Name</span>
+                            <span class="user-email">
+                                <i class="bi bi-envelope me-1"></i>@UserState.Email
+                            </span>
+                        </div>
+
+                        <!-- Badge rôle — masqué sur mobile -->
+                        @if (UserState.IsAgent)
+                        {
+                            <span class="role-badge role-agent d-none d-sm-inline-flex">
+                                <i class="bi bi-shield-check me-1"></i>Agent
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="role-badge role-user d-none d-sm-inline-flex">
+                                <i class="bi bi-person me-1"></i>Utilisateur
+                            </span>
+                        }
+
+                        <!-- Séparateur — masqué sur mobile -->
+                        <div class="header-separator d-none d-sm-block"></div>
+
+                        <!-- Déconnexion — texte masqué sur mobile, icône seule -->
+                        <button class="btn-logout" @onclick="Deconnecter" title="Se déconnecter">
+                            <i class="bi bi-box-arrow-right"></i>
+                            <span class="d-none d-sm-inline">Déconnexion</span>
+                        </button>
+                    </div>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </header>
+
+    <!-- ===== CORPS : sidebar + contenu ===== -->
+    <div class="app-body">
+        <nav class="app-nav">
+            <NavMenu />
+        </nav>
+        <main class="app-main">
+            @Body
+        </main>
+    </div>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="app-footer">
+        <div class="footer-inner">
+            <span class="footer-copy">
+                <i class="bi bi-ticket-detailed me-1"></i>
+                &copy; @DateTime.Now.Year TicketStream
+            </span>
+            <div class="footer-links">
+                <a href="#"><i class="bi bi-question-circle me-1"></i>Aide</a>
+                <a href="#"><i class="bi bi-envelope me-1"></i>Contact</a>
+                <a href="#"><i class="bi bi-shield-lock me-1"></i>Politique de confidentialité</a>
+            </div>
+        </div>
+    </footer>
+
+</div>
+
+@code {
+    /// <summary>
+    /// Après le premier rendu (JS disponible), restaure le token depuis le localStorage
+    /// puis charge le profil utilisateur si nécessaire.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var tokenTrouve = await AuthProvider.InitialiserDepuisStockageAsync();
+
+        if (tokenTrouve && !UserState.IsLoaded)
+        {
+            var profil = await UserApi.GetProfilAsync();
+            if (profil != null)
+            {
+                UserState.SetUser(profil);
+                StateHasChanged();
+            }
+        }
+    }
+
+    // Déconnecte l'utilisateur et redirige vers la page de connexion
+    private async Task Deconnecter()
+    {
+        await AuthProvider.DeconnecterAsync();
+        UserState.Clear();
+        Nav.NavigateTo("/login");
+    }
+}

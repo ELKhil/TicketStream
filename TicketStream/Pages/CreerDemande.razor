@@ -1,0 +1,67 @@
+@page "/demandes/creer"
+@attribute [Authorize]
+@inject DemandeApiService DemandeApi
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+<div class="card shadow-sm" style="max-width:600px;margin:2rem auto">
+    <div class="card-body p-4">
+        <h4 class="card-title mb-4">Créer une nouvelle demande</h4>
+
+        <EditForm Model="@modele" OnValidSubmit="Creer">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label class="form-label">Titre <span class="text-danger">*</span></label>
+                <InputText @bind-Value="modele.Title" class="form-control"
+                           placeholder="Titre de la demande" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Description <span class="text-danger">*</span></label>
+                <InputTextArea @bind-Value="modele.Description" class="form-control" rows="4"
+                               placeholder="Décrivez la demande..." />
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary" disabled="@chargement">
+                    @if (chargement) { <span>Création...</span> }
+                    else             { <span>Créer la demande</span> }
+                </button>
+                <a href="/demandes" class="btn btn-outline-secondary">Annuler</a>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private CreerDemandeModele modele    = new();
+    private string             erreur    = "";
+    private bool               chargement = false;
+
+    // Appelle l'API pour créer la demande puis redirige vers la liste
+    private async Task Creer()
+    {
+        chargement = true;
+
+        var resultat = await DemandeApi.CreerDemandeAsync(modele.Title, modele.Description);
+
+        if (resultat == null)
+        {
+            Toast.Show("Demande créée avec succès.", "success");
+            Nav.NavigateTo("/demandes");
+        }
+        else
+        {
+            Toast.Show(resultat, "danger");
+            chargement = false;
+        }
+    }
+
+    // Modèle du formulaire de création
+    private class CreerDemandeModele
+    {
+        public string Title       { get; set; } = "";
+        public string Description { get; set; } = "";
+    }
+}

@@ -1,0 +1,30 @@
+@inject NavigationManager Nav
+<!--
+    Injection du service NavigationManager.
+    Il permet de naviguer programmatiquement vers une autre URL.
+-->
+
+@code {
+    // Paramètre : URL cible vers laquelle rediriger
+    // Par défaut, redirige vers la page d'accueil "/"
+    [Parameter]
+    public string Page { get; set; } = "/";
+
+    /*
+        OnAfterRender est appelé après que le composant
+        a été rendu dans le DOM.
+
+        firstRender = true uniquement lors du premier rendu.
+        Cela évite une boucle infinie de redirection.
+    */
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Navigation vers la page cible
+            // replace: true évite d'ajouter une entrée
+            // supplémentaire dans l'historique du navigateur
+            Nav.NavigateTo(Page, replace: true);
+        }
+    }
+}

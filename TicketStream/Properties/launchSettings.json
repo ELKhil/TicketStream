@@ -4,7 +4,6 @@
     "TicketStream": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "swagger",
       "applicationUrl": "http://localhost:5146",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"

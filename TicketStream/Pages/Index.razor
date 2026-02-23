@@ -1,0 +1,7 @@
+@page "/"
+@attribute [Authorize]
+@inject NavigationManager Nav
+@inject UserState UserState
+
+<!-- Redirige vers la page des demandes qui est la page principale -->
+<RedirectTo Page="/demandes" />

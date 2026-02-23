@@ -49,7 +49,7 @@ Développée en **.NET 7**, elle utilise **Entity Framework Core**, **SQL Server
 | Id : Guid                                        |
 | Title : string                                   |
 | Description : string                             |
-| Status : string (En attente / En cours / Terminé)|
+| Status : DemandeStatus (EnAttente / EnCours / Termine) |
 |                                                  |
 | UserId : Guid                                    |
 | AssignedAgentId : Guid?                          |
@@ -225,7 +225,7 @@ TicketStream/
   Controllers/          # Contrôleurs API (AuthController, UsersController,
   │                     #   DemandesController, CommentairesController)
   Data/                 # TicketStreamContext (DbContext EF Core)
-  Entities/             # Entités EF Core (User, Demande, Commentaire, UserRole)
+  Entities/             # Entités EF Core (User, Demande, Commentaire, UserRole, DemandeStatus)
   Migrations/           # Historique des migrations EF Core
   Program.cs            # Bootstrap : DI, JWT, Swagger, EF Core, middleware
   appsettings.json      # Configuration (connexion SQL Server, JWT)

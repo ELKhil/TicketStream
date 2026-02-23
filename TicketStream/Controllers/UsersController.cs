@@ -33,17 +33,42 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Retourne la liste de tous les utilisateurs (actifs et inactifs).
+    /// Retourne la liste des utilisateurs avec filtres optionnels.
     /// Réservé à ROLE_AGENT uniquement.
     /// Le PasswordHash est exclu de la réponse pour des raisons de sécurité.
+    ///
+    /// Filtres disponibles (cumulables) :
+    ///   - actif : true = uniquement les comptes actifs, false = uniquement les inactifs
+    ///   - email : recherche partielle et insensible à la casse sur l'adresse email
+    ///   - role  : filtre sur le rôle exact (ROLE_USER ou ROLE_AGENT)
     /// </summary>
-    /// <returns>Liste de tous les utilisateurs ou 403 Forbidden</returns>
+    /// <param name="actif">Filtre optionnel sur le statut actif/inactif</param>
+    /// <param name="email">Filtre optionnel par email (correspondance partielle)</param>
+    /// <param name="role">Filtre optionnel par rôle exact</param>
+    /// <returns>Liste filtrée des utilisateurs</returns>
     [HttpGet]
     [Authorize(Roles = "ROLE_AGENT")]
-    public async Task<IActionResult> Get()
+    public async Task<IActionResult> Get(
+        [FromQuery] bool? actif = null,
+        [FromQuery] string? email = null,
+        [FromQuery] UserRole? role = null)
     {
+        var query = _context.Users.AsQueryable();
+
+        // Filtre par statut actif/inactif
+        if (actif.HasValue)
+            query = query.Where(u => u.Actif == actif.Value);
+
+        // Filtre par email : correspondance partielle insensible à la casse
+        if (!string.IsNullOrWhiteSpace(email))
+            query = query.Where(u => u.Email.Contains(email));
+
+        // Filtre par rôle exact
+        if (role.HasValue)
+            query = query.Where(u => u.Role == role.Value);
+
         // Sélectionne uniquement les champs nécessaires, sans exposer le hash du mot de passe
-        var users = await _context.Users
+        var users = await query
             .Select(u => new { u.Id, u.Name, u.Email, u.Role, u.Actif })
             .ToListAsync();
 

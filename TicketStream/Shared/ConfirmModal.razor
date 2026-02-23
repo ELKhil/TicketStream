@@ -1,0 +1,72 @@
+<!-- Fond semi-transparent + modal centrée, affichée uniquement si visible = true -->
+@if (visible)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.45)">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow">
+
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-semibold">@titre</h5>
+                    <button type="button" class="btn-close" @onclick="Annuler"></button>
+                </div>
+
+                <div class="modal-body py-3">
+                    <p class="mb-0">@message</p>
+                </div>
+
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-outline-secondary" @onclick="Annuler">Annuler</button>
+                    <button class="btn @classeBouton" @onclick="Confirmer">@libelleBouton</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool        visible       = false;
+    private string      titre         = "";
+    private string      message       = "";
+    private string      libelleBouton = "Confirmer";
+    private string      classeBouton  = "btn-primary";
+    private Func<Task>? callback;
+
+    /// <summary>
+    /// Affiche la popup de confirmation générique.
+    /// </summary>
+    /// <param name="titreModal">Titre affiché dans l'en-tête</param>
+    /// <param name="msg">Corps du message</param>
+    /// <param name="onConfirme">Callback exécuté si l'utilisateur confirme</param>
+    /// <param name="libelle">Libellé du bouton de confirmation (défaut : "Confirmer")</param>
+    /// <param name="classe">Classe Bootstrap du bouton (défaut : "btn-primary")</param>
+    public void Afficher(
+        string     titreModal,
+        string     msg,
+        Func<Task> onConfirme,
+        string     libelle = "Confirmer",
+        string     classe  = "btn-primary")
+    {
+        titre         = titreModal;
+        message       = msg;
+        callback      = onConfirme;
+        libelleBouton = libelle;
+        classeBouton  = classe;
+        visible       = true;
+        StateHasChanged();
+    }
+
+    // Valide : ferme la modal et exécute le callback
+    private async Task Confirmer()
+    {
+        visible = false;
+        if (callback != null) await callback();
+    }
+
+    // Annule : ferme la modal sans rien faire
+    private void Annuler()
+    {
+        visible = false;
+        StateHasChanged();
+    }
+}

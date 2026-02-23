@@ -63,7 +63,8 @@ public class CommentairesController : ControllerBase
         if (demandeId.HasValue)
             query = query.Where(c => c.DemandeId == demandeId.Value);
 
-        return Ok(await query.ToListAsync());
+        // Tri chronologique ascendant : les plus anciens commentaires en premier
+        return Ok(await query.OrderBy(c => c.CreatedAt).ToListAsync());
     }
 
     /// <summary>

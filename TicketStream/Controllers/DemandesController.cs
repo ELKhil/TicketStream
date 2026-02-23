@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TicketStream.Data;
 using TicketStream.Entities;
+using TicketStream.Models;
 
 /// <summary>
 /// Contrôleur responsable de la gestion des demandes (tickets).
@@ -34,28 +35,67 @@ public class DemandesController : ControllerBase
     }
 
     /// <summary>
-    /// Retourne la liste des demandes actives (non supprimées).
-    /// ROLE_AGENT : voit toutes les demandes.
-    /// ROLE_USER  : voit uniquement ses propres demandes (filtre sur UserId).
-    /// Charge les relations : utilisateur demandeur, agent assigné,
-    /// dernier modificateur et suppresseur éventuel.
+    /// Retourne la liste des demandes actives (non supprimées) avec filtres optionnels.
+    ///
+    /// ROLE_AGENT : voit toutes les demandes et peut filtrer par :
+    ///   - status         : statut de la demande (EnAttente, EnCours, Termine)
+    ///   - assignedAgentId: UUID de l'agent assigné (filtre sur un agent précis)
+    ///   - isAssigned     : true = uniquement assignées, false = uniquement non assignées
+    ///                      (ignoré si assignedAgentId est fourni)
+    ///   - createdAt      : date de création (filtre sur le jour calendaire UTC exact)
+    ///
+    /// ROLE_USER : voit uniquement ses propres demandes et peut filtrer par :
+    ///   - status         : statut de la demande
+    ///
+    /// Les filtres sont cumulables (ET logique).
     /// </summary>
-    /// <returns>Liste des demandes selon le rôle de l'utilisateur connecté</returns>
+    /// <param name="status">Filtre optionnel sur le statut (ROLE_AGENT et ROLE_USER)</param>
+    /// <param name="assignedAgentId">Filtre optionnel sur l'agent assigné (ROLE_AGENT uniquement)</param>
+    /// <param name="isAssigned">Filtre optionnel assignée/non assignée (ROLE_AGENT uniquement, ignoré si assignedAgentId est fourni)</param>
+    /// <param name="createdAt">Filtre optionnel sur la date de création — jour entier UTC (ROLE_AGENT uniquement)</param>
+    /// <returns>Liste filtrée des demandes selon le rôle et les paramètres fournis</returns>
     [HttpGet]
-    public async Task<IEnumerable<Demande>> Get()
+    public async Task<IEnumerable<Demande>> Get(
+        [FromQuery] DemandeStatus? status = null,
+        [FromQuery] Guid? assignedAgentId = null,
+        [FromQuery] bool? isAssigned = null,
+        [FromQuery] string tri = "recentes")
     {
         // Extraction des informations de l'utilisateur connecté depuis le token JWT
         var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var isAgent = User.IsInRole("ROLE_AGENT");
 
-        return await _context.Demandes
+        var query = _context.Demandes
             .Include(d => d.User)           // Utilisateur qui a créé la demande
             .Include(d => d.AssignedAgent)  // Agent assigné à la demande (peut être null)
             .Include(d => d.UpdatedBy)      // Dernier utilisateur ayant modifié la demande (peut être null)
             .Include(d => d.DeletedBy)      // Utilisateur ayant supprimé la demande (peut être null)
-            .Where(d => d.DeletedAt == null                      // Exclut les demandes supprimées
-                     && (isAgent || d.UserId == userId))         // ROLE_USER ne voit que les siennes
-            .ToListAsync();
+            .Where(d => d.DeletedAt == null                // Exclut les demandes supprimées
+                     && (isAgent || d.UserId == userId));  // ROLE_USER ne voit que les siennes
+
+        // Filtre par statut : accessible par tous les rôles
+        if (status.HasValue)
+            query = query.Where(d => d.Status == status.Value);
+
+        // Filtres supplémentaires réservés à ROLE_AGENT
+        if (isAgent)
+        {
+            // Filtre par agent assigné spécifique
+            if (assignedAgentId.HasValue)
+                query = query.Where(d => d.AssignedAgentId == assignedAgentId.Value);
+            // Filtre assignée / non assignée (ignoré si un agent précis est fourni)
+            else if (isAssigned.HasValue)
+                query = isAssigned.Value
+                    ? query.Where(d => d.AssignedAgentId != null)   // Uniquement assignées
+                    : query.Where(d => d.AssignedAgentId == null);  // Uniquement non assignées
+        }
+
+        // Tri par date de création : "recentes" = plus récentes en premier (défaut), "anciennes" = plus anciennes en premier
+        query = tri == "anciennes"
+            ? query.OrderBy(d => d.CreatedAt)
+            : query.OrderByDescending(d => d.CreatedAt);
+
+        return await query.ToListAsync();
     }
 
     /// <summary>
@@ -101,21 +141,41 @@ public class DemandesController : ControllerBase
     /// <param name="demande">Objet demande reçu dans le corps de la requête</param>
     /// <returns>201 Created avec la demande créée et son URL</returns>
     [HttpPost]
-    public async Task<ActionResult<Demande>> Post(Demande demande)
+    public async Task<ActionResult<DemandeDto>> Post(CreerDemandeDto dto)
     {
-        // Force l'UserId depuis le token JWT (ignore la valeur éventuellement fournie dans le body)
-        demande.UserId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-        // Définit la date de création côté serveur
-        demande.CreatedAt = DateTime.UtcNow;
+        var demande = new Demande
+        {
+            Title = dto.Title,
+            Description = dto.Description,
+            UserId = userId,          // ← obligatoire, c’est le user connecté
+            User = null,              // ← éviter le tracking double
+            AssignedAgentId = null,
+            AssignedAgent = null,
+            UpdatedById = null,
+            UpdatedBy = null,
+            DeletedById = null,
+            DeletedBy = null,
+            CreatedAt = DateTime.UtcNow,
+            Status = DemandeStatus.EnAttente
+        };
 
         _context.Demandes.Add(demande);
         await _context.SaveChangesAsync();
 
-        // Retourne 201 avec l'URL vers la ressource créée (GET api/demandes/{id})
-        return CreatedAtAction(nameof(Get), new { id = demande.Id }, demande);
-    }
+        var result = new DemandeDto
+        {
+            Id = demande.Id,
+            Title = demande.Title,
+            Description = demande.Description,
+            Status = demande.Status.ToString(),
+            UserId = userId,
+            CreatedAt = demande.CreatedAt
+        };
 
+        return CreatedAtAction(nameof(Get), new { id = demande.Id }, result);
+    }
     /// <summary>
     /// Met à jour une demande existante identifiée par son UUID.
     /// ROLE_AGENT : peut modifier n'importe quelle demande.
@@ -130,7 +190,7 @@ public class DemandesController : ControllerBase
     /// <param name="updatedDemande">Objet contenant les nouvelles valeurs</param>
     /// <returns>204 NoContent, 403 Forbidden ou 404 NotFound</returns>
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Put(Guid id, Demande updatedDemande)
+    public async Task<IActionResult> Put(Guid id, ModifierDemandeDto dto)
     {
         // Extraction des informations de l'utilisateur connecté depuis le token JWT
         var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -144,19 +204,31 @@ public class DemandesController : ControllerBase
         if (!isAgent && demande.UserId != userId) return Forbid();
 
         // Mise à jour des champs métier
-        demande.Title = updatedDemande.Title;
-        demande.Description = updatedDemande.Description;
-        demande.Status = updatedDemande.Status;
-        demande.AssignedAgentId = updatedDemande.AssignedAgentId;
+        // Titre et description : modifiables uniquement par le propriétaire de la demande.
+        // Un agent qui n'est pas l'auteur peut seulement changer le statut et l'assignation.
+        if (!isAgent || demande.UserId == userId)
+        {
+            demande.Title       = dto.Title;
+            demande.Description = dto.Description;
+        }
 
-        // Si un agent est assigné : utilise la date fournie ou l'heure actuelle.
-        // Si l'agent est retiré (null) : remet la date d'assignation à null.
-        demande.AssignedAt = updatedDemande.AssignedAgentId.HasValue
-            ? updatedDemande.AssignedAt ?? DateTime.UtcNow
-            : null;
+        // Statut et assignation : modifiables uniquement par un agent
+        if (isAgent)
+        {
+            demande.Status          = dto.Status;
+            demande.AssignedAgentId = dto.AssignedAgentId;
+        }
+
+        // AssignedAt : recalculé uniquement si un agent a modifié l'assignation
+        if (isAgent)
+        {
+            demande.AssignedAt = dto.AssignedAgentId.HasValue
+                ? dto.AssignedAt ?? DateTime.UtcNow
+                : null;
+        }
 
         // Traçabilité : enregistre qui a modifié la demande et quand (depuis le token JWT)
-        demande.UpdatedAt = DateTime.UtcNow;
+        demande.UpdatedAt   = DateTime.UtcNow;
         demande.UpdatedById = userId;
 
         await _context.SaveChangesAsync();

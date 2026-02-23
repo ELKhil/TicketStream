@@ -81,6 +81,10 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
+        // Bloque l'accès si un token JWT valide est déjà présent dans la requête
+        if (User.Identity?.IsAuthenticated == true)
+            return BadRequest(new { message = "Vous êtes déjà connecté." });
+
         // Recherche l'utilisateur actif par email
         var user = await _context.Users
             .FirstOrDefaultAsync(u => u.Email == request.Email && u.Actif);

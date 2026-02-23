@@ -1,0 +1,56 @@
+@implements IDisposable
+@inject NavigationManager Nav
+
+<AuthorizeView>
+    <!-- Navigation pour les utilisateurs connectés -->
+    <Authorized>
+        <div class="nav-section-title">Navigation</div>
+        <nav class="nav flex-column">
+
+            <AuthorizeView Roles="ROLE_AGENT" Context="agentCtx">
+                <Authorized>
+                    <!-- Liens réservés à ROLE_AGENT -->
+                    <a class="nav-link @EstActif("/demandes")" href="/demandes">
+                        Demandes
+                    </a>
+                    <a class="nav-link @EstActif("/utilisateurs")" href="/utilisateurs">
+                        Utilisateurs
+                    </a>
+                </Authorized>
+                <NotAuthorized>
+                    <!-- Lien pour ROLE_USER -->
+                    <a class="nav-link @EstActif("/demandes")" href="/demandes">
+                        Mes demandes
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
+
+        </nav>
+    </Authorized>
+
+    <!-- Navigation pour les visiteurs non connectés -->
+    <NotAuthorized>
+        <div class="nav-section-title">Compte</div>
+        <nav class="nav flex-column">
+            <a class="nav-link @EstActif("/login")" href="/login">Connexion</a>
+            <a class="nav-link @EstActif("/register")" href="/register">Inscription</a>
+        </nav>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    // S'abonne aux changements d'URL pour forcer le re-rendu du menu
+    protected override void OnInitialized()
+        => Nav.LocationChanged += OnLocationChanged;
+
+    // Appelé à chaque navigation : force le recalcul de EstActif
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+        => StateHasChanged();
+
+    public void Dispose()
+        => Nav.LocationChanged -= OnLocationChanged;
+
+    // Retourne la classe CSS "active" si l'URL courante contient le chemin donné
+    private string EstActif(string chemin)
+        => Nav.Uri.Contains(chemin, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+}
