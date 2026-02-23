@@ -10,11 +10,14 @@
             <AuthorizeView Roles="ROLE_AGENT" Context="agentCtx">
                 <Authorized>
                     <!-- Liens réservés à ROLE_AGENT -->
+                    <a class="nav-link @EstActif("/dashboard")" href="/dashboard">
+                        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+                    </a>
                     <a class="nav-link @EstActif("/demandes")" href="/demandes">
-                        Demandes
+                        <i class="bi bi-ticket-detailed me-1"></i>Demandes
                     </a>
                     <a class="nav-link @EstActif("/utilisateurs")" href="/utilisateurs">
-                        Utilisateurs
+                        <i class="bi bi-people me-1"></i>Utilisateurs
                     </a>
                 </Authorized>
                 <NotAuthorized>

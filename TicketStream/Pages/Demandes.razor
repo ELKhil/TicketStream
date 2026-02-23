@@ -1,142 +1,178 @@
 @page "/demandes"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @inject DemandeApiService DemandeApi
 @inject UserApiService UserApi
 @inject NavigationManager Nav
 @inject UserState UserState
+@inject IJSRuntime JS
 
-<!-- Titre adapté selon le rôle -->
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">@(UserState.IsAgent ? "Demandes" : "Mes demandes")</h3>
-    @if (!UserState.IsAgent)
-    {
-        <!-- Bouton de création visible uniquement pour ROLE_USER -->
-        <a href="/demandes/creer" class="btn btn-primary btn-sm">+ Créer une demande</a>
-    }
-</div>
+<div class="demandes-page">
 
-<!-- Barre de filtres -->
-<div class="filter-bar">
-    <div class="row g-2 align-items-end">
-
-        <!-- Filtre statut (tous les rôles) -->
-        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-            <label class="filter-label">Statut</label>
-            <select @bind="filtreStatus" class="form-select form-select-sm">
-                <option value="">Tous</option>
-                <option value="EnAttente">En attente</option>
-                <option value="EnCours">En cours</option>
-                <option value="Termine">Terminé</option>
-            </select>
-        </div>
-
-        @if (UserState.IsAgent)
+    <!-- En-tête : titre + bouton de création -->
+    <div class="demandes-header d-flex justify-content-between align-items-center">
+        <h3 class="mb-0">@(UserState.IsAgent ? "Demandes" : "Mes demandes")</h3>
+        @if (!UserState.IsAgent)
         {
-            <!-- Filtre par agent assigné (ROLE_AGENT uniquement) -->
-            <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-                <label class="filter-label">Agent assigné</label>
-                <select @bind="filtreAgentId" class="form-select form-select-sm">
-                    <option value="">Tous les agents</option>
-                    @foreach (var agent in agents)
-                    {
-                        <option value="@agent.Id">@agent.Name</option>
-                    }
-                </select>
-            </div>
-
-            <!-- Filtre assignée / non assignée -->
-            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-                <label class="filter-label">Assignation</label>
-                <select @bind="filtreIsAssigned" class="form-select form-select-sm">
-                    <option value="">Toutes</option>
-                    <option value="true">Assignées</option>
-                    <option value="false">Non assignées</option>
-                </select>
-            </div>
-
-            <!-- Tri par date de création -->
-            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-                <label class="filter-label">Date de création</label>
-                <select @bind="filtreTri" class="form-select form-select-sm">
-                    <option value="recentes">Récentes</option>
-                    <option value="anciennes">Anciennes</option>
-                </select>
-            </div>
+            <!-- Bouton de création visible uniquement pour ROLE_USER -->
+            <a href="/demandes/creer" class="btn btn-primary btn-sm">+ Créer une demande</a>
         }
+    </div>
 
-        <!-- Boutons -->
-        <div class="col-12 col-sm-auto ms-sm-auto">
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm flex-grow-1 flex-sm-grow-0"
-                        @onclick="Filtrer">
-                    <i class="bi bi-funnel me-1"></i>Filtrer
-                </button>
-                <button class="btn btn-outline-secondary btn-sm flex-grow-1 flex-sm-grow-0"
-                        @onclick="Reinitialiser">
-                    <i class="bi bi-arrow-counterclockwise me-1"></i>Réinitialiser
-                </button>
+    <!-- Barre de filtres -->
+    <div class="filter-bar">
+        <div class="row g-2 align-items-end">
+
+            <!-- Filtre statut (tous les rôles) -->
+            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                <label class="filter-label">Statut</label>
+                <select @bind="filtreStatus" class="form-select form-select-sm">
+                    <option value="">Tous</option>
+                    <option value="EnAttente">En attente</option>
+                    <option value="EnCours">En cours</option>
+                    <option value="Termine">Terminé</option>
+                </select>
             </div>
+
+            @if (UserState.IsAgent)
+            {
+                <!-- Filtre par agent assigné (ROLE_AGENT uniquement) -->
+                <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+                    <label class="filter-label">Agent assigné</label>
+                    <select @bind="filtreAgentId" class="form-select form-select-sm">
+                        <option value="">Tous les agents</option>
+                        @foreach (var agent in agents)
+                        {
+                            <option value="@agent.Id">@agent.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <!-- Filtre assignée / non assignée -->
+                <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <label class="filter-label">Assignation</label>
+                    <select @bind="filtreIsAssigned" class="form-select form-select-sm">
+                        <option value="">Toutes</option>
+                        <option value="true">Assignées</option>
+                        <option value="false">Non assignées</option>
+                    </select>
+                </div>
+
+                <!-- Tri par date de création -->
+                <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <label class="filter-label">Date de création</label>
+                    <select @bind="filtreTri" class="form-select form-select-sm">
+                        <option value="recentes">Récentes</option>
+                        <option value="anciennes">Anciennes</option>
+                    </select>
+                </div>
+            }
+
+            <!-- Boutons -->
+            <div class="col-12 col-sm-auto ms-sm-auto">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm flex-grow-1 flex-sm-grow-0"
+                            @onclick="Filtrer">
+                        <i class="bi bi-funnel me-1"></i>Filtrer
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm flex-grow-1 flex-sm-grow-0"
+                            @onclick="Reinitialiser">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Réinitialiser
+                    </button>
+                </div>
+            </div>
+
         </div>
-
     </div>
-</div>
 
-<!-- Tableau des demandes -->
-@if (demandes == null)
-{
-    <div class="text-center py-4">
-        <div class="spinner-border text-primary" role="status"></div>
-        <p class="mt-2 text-muted">Chargement...</p>
-    </div>
-}
-else if (demandes.Count == 0)
-{
-    <div class="alert alert-info">Aucune demande trouvée.</div>
-}
-else
-{
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>Titre</th>
-                    <th>Statut</th>
-                    <th>Créé par</th>
-                    @if (UserState.IsAgent)
-                    {
-                        <th>Agent assigné</th>
-                        <th>Date création</th>
-                    }
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var d in demandes)
+    <!-- Zone principale : grille de cartes + pagination -->
+    @if (demandes == null)
+    {
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Chargement...</p>
+        </div>
+    }
+    else if (demandes.Count == 0)
+    {
+        <div class="alert alert-info">Aucune demande trouvée.</div>
+    }
+    else
+    {
+        <div class="demandes-main-area">
+
+            <!-- Grille : 3 colonnes × 2 lignes = 6 cartes par page -->
+            <div class="demandes-cards-grid">
+                @foreach (var d in DemandesPaginees)
                 {
-                    <tr>
-                        <td><strong>@d.Title</strong></td>
-                        <td>
+                    <div class="demande-card @ClasseAccentStatut(d.Status)">
+
+                        <!-- En-tête : titre + badge statut -->
+                        <div class="demande-card-header">
+                            <span class="demande-card-title">@d.Title</span>
                             <span class="badge badge-statut @ClasseStatut(d.Status)">
                                 @LibelleStatut(d.Status)
                             </span>
-                        </td>
-                        <td>@(d.User?.Name ?? "—")</td>
-                        @if (UserState.IsAgent)
-                        {
-                            <td>@(d.AssignedAgent?.Name ?? "—")</td>
-                            <td>@d.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                        }
-                        <td>
-                            <a href="/demandes/@d.Id" class="btn btn-sm btn-outline-primary">Voir</a>
-                        </td>
-                    </tr>
+                        </div>
+
+                        <!-- Corps : infos de la demande -->
+                        <div class="demande-card-body">
+                            <div class="demande-card-info">
+                                <span class="demande-card-label">Créé par</span>
+                                <span class="demande-card-value">@(d.User?.Name ?? "—")</span>
+                            </div>
+                            @if (UserState.IsAgent)
+                            {
+                                <div class="demande-card-info">
+                                    <span class="demande-card-label">Agent assigné</span>
+                                    <span class="demande-card-value">@(d.AssignedAgent?.Name ?? "—")</span>
+                                </div>
+                                <div class="demande-card-info">
+                                    <span class="demande-card-label">Créé le</span>
+                                    <span class="demande-card-value">@d.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Pied : bouton d'accès au détail -->
+                        <div class="demande-card-footer">
+                            <a href="/demandes/@d.Id" class="btn btn-sm btn-outline-primary w-100">
+                                Voir le détail →
+                            </a>
+                        </div>
+
+                    </div>
                 }
-            </tbody>
-        </table>
-    </div>
-}
+            </div>
+
+            <!-- Barre de pagination (masquée s'il n'y a qu'une seule page) -->
+            @if (TotalPages > 1)
+            {
+                <div class="demandes-pagination">
+                    <button class="btn btn-outline-secondary btn-sm"
+                            @onclick="PagePrecedente"
+                            disabled="@(pageActuelle == 1)">
+                        <i class="bi bi-chevron-left me-1"></i>Précédent
+                    </button>
+                    <span class="demandes-page-info">Page @pageActuelle / @TotalPages</span>
+                    <button class="btn btn-outline-secondary btn-sm"
+                            @onclick="PageSuivante"
+                            disabled="@(pageActuelle >= TotalPages)">
+                        Suivant<i class="bi bi-chevron-right ms-1"></i>
+                    </button>
+                </div>
+            }
+
+        </div>
+    }
+
+</div>
 
 @code {
+    // Nombre fixe de cartes affichées par page
+    private const int CartesParPage = 6;
+    private int pageActuelle = 1;
+
     private List<DemandeDto>? demandes;
     private List<UserDto>     agents = new List<UserDto>();
 
@@ -145,6 +181,15 @@ else
     private string filtreAgentId    = "";
     private string filtreIsAssigned = "";
     private string filtreTri        = "recentes";
+
+    // Nombre total de pages calculé depuis la liste complète en mémoire
+    private int TotalPages => demandes == null || demandes.Count == 0
+        ? 1 : (int)Math.Ceiling(demandes.Count / (double)CartesParPage);
+
+    // Sous-ensemble de demandes à afficher sur la page courante (pagination côté client)
+    private IEnumerable<DemandeDto> DemandesPaginees =>
+        demandes?.Skip((pageActuelle - 1) * CartesParPage).Take(CartesParPage)
+        ?? Enumerable.Empty<DemandeDto>();
 
     protected override async Task OnInitializedAsync()
     {
@@ -155,10 +200,25 @@ else
         await ChargerDemandes();
     }
 
-    // Charge les demandes selon les filtres actifs
+    // Active le mode plein-écran sans scroll au premier rendu (comme le dashboard)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JS.InvokeVoidAsync("dashboard.setDemandesMode", true);
+    }
+
+    // Retire le mode plein-écran à la destruction du composant (navigation vers une autre page)
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("dashboard.setDemandesMode", false); }
+        catch { /* connexion SignalR potentiellement fermée lors de la navigation */ }
+    }
+
+    // Charge les demandes selon les filtres actifs et réinitialise la pagination à la page 1
     private async Task ChargerDemandes()
     {
         demandes = null;
+        pageActuelle = 1;
 
         // Résout le filtre agent/assignation (assignedAgentId prend la priorité sur isAssigned)
         Guid? agentId  = Guid.TryParse(filtreAgentId, out var g) ? g : null;
@@ -181,6 +241,18 @@ else
         await ChargerDemandes();
     }
 
+    // Navigue vers la page précédente si possible
+    private void PagePrecedente()
+    {
+        if (pageActuelle > 1) pageActuelle--;
+    }
+
+    // Navigue vers la page suivante si possible
+    private void PageSuivante()
+    {
+        if (pageActuelle < TotalPages) pageActuelle++;
+    }
+
     // Traduit le statut API en libellé lisible
     private static string LibelleStatut(string status) => status switch
     {
@@ -197,5 +269,14 @@ else
         "EnCours"   => "bg-info text-dark",
         "Terminé"   => "bg-success",
         _           => "bg-secondary"
+    };
+
+    // Classe de la bordure d'accent gauche selon le statut
+    private static string ClasseAccentStatut(string status) => status switch
+    {
+        "EnAttente" => "demande-card-attente",
+        "EnCours"   => "demande-card-encours",
+        "Terminé"   => "demande-card-termine",
+        _           => "demande-card-default"
     };
 }

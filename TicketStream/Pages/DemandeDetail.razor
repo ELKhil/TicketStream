@@ -58,11 +58,31 @@ else if (demande != null)
                     </div>
                     <div class="col-md-4">
                         <label class="text-muted small">Statut</label>
-                        <div>
-                            <span class="badge badge-statut @ClasseStatut(demande.Status)">
-                                @LibelleStatut(demande.Status)
-                            </span>
-                        </div>
+                        @if (isAgent)
+                        {
+                            <!-- Select inline : modification rapide du statut sans passer par le mode édition -->
+                            <div class="d-flex align-items-center gap-2">
+                                <select value="@inlineStatus" @onchange="OnStatutChange"
+                                        class="form-select form-select-sm quick-action-select"
+                                        disabled="@chargementStatut">
+                                    <option value="EnAttente">En attente</option>
+                                    <option value="EnCours">En cours</option>
+                                    <option value="Terminé">Terminé</option>
+                                </select>
+                                @if (chargementStatut)
+                                {
+                                    <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div>
+                                <span class="badge badge-statut @ClasseStatut(demande.Status)">
+                                    @LibelleStatut(demande.Status)
+                                </span>
+                            </div>
+                        }
                     </div>
                     <div class="col-md-4">
                         <label class="text-muted small">Créé par</label>
@@ -74,7 +94,29 @@ else if (demande != null)
                     </div>
                     <div class="col-md-4">
                         <label class="text-muted small">Agent assigné</label>
-                        <p class="mb-0">@(demande.AssignedAgent?.Name ?? "—")</p>
+                        @if (isAgent)
+                        {
+                            <!-- Select inline : assignation rapide sans passer par le mode édition -->
+                            <div class="d-flex align-items-center gap-2">
+                                <select value="@inlineAgentId" @onchange="OnAgentChange"
+                                        class="form-select form-select-sm quick-action-select"
+                                        disabled="@chargementAgent">
+                                    <option value="">Aucun</option>
+                                    @foreach (var agent in agents)
+                                    {
+                                        <option value="@agent.Id">@agent.Name</option>
+                                    }
+                                </select>
+                                @if (chargementAgent)
+                                {
+                                    <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="mb-0">@(demande.AssignedAgent?.Name ?? "—")</p>
+                        }
                     </div>
                     @if (demande.AssignedAt.HasValue)
                     {
@@ -321,13 +363,23 @@ else if (demande != null)
     private bool isAgent;
     private Guid userId;
 
-    // État de l'édition
+    // État de l'édition complète (mode formulaire)
     private bool   modeEdition     = false;
     private string editTitre       = "";
     private string editDescription = "";
     private string editStatus      = "";
     private string editAgentId     = "";
     private bool   chargementEdit;
+
+    // Actions rapides de l'agent : statut et assignation sans ouvrir le formulaire d'édition
+    private string inlineStatus          = "";
+    private string inlineAgentId         = "";
+    private bool   chargementStatut;
+    private bool   chargementAgent;
+
+    // Valeurs en attente de confirmation (entre le changement du select et la validation modale)
+    private string pendingInlineStatus   = "";
+    private string pendingInlineAgentId  = "";
 
     // État des commentaires
     private string nouveauCommentaire      = "";
@@ -343,9 +395,10 @@ else if (demande != null)
             ? commentaires
             : commentaires.Skip(Math.Max(0, commentaires.Count - NbCommentairesParDefaut));
 
-    // Détermine si l'utilisateur peut modifier / supprimer cette demande
-    private bool peutModifier => isAgent || demande?.UserId == userId;
-    private bool peutSupprimer => isAgent || demande?.UserId == userId;
+    // ROLE_AGENT : n'a plus accès au bouton "Modifier" — il utilise les contrôles inline
+    // ROLE_USER  : peut modifier uniquement ses propres demandes (titre / description)
+    private bool peutModifier  => !isAgent && demande?.UserId == userId;
+    private bool peutSupprimer => isAgent  || demande?.UserId == userId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -380,6 +433,10 @@ else if (demande != null)
         editDescription = demande.Description;
         editStatus      = demande.Status; // "EnAttente", "EnCours" ou "Terminé"
         editAgentId     = demande.AssignedAgentId?.ToString() ?? "";
+
+        // Synchronise les selects inline (actions rapides de l'agent)
+        inlineStatus  = demande.Status;
+        inlineAgentId = demande.AssignedAgentId?.ToString() ?? "";
     }
 
     // Ouvre la popup de confirmation avant de sauvegarder
@@ -496,6 +553,110 @@ else if (demande != null)
     // Annule l'édition
     private void AnnulerEdition()
         => modeEdition = false;
+
+    // Intercepte le changement de statut, mémorise la valeur et demande confirmation
+    // Le select est visuellement remis à l'ancienne valeur pendant que le modal est ouvert
+    private void OnStatutChange(ChangeEventArgs e)
+    {
+        pendingInlineStatus = e.Value?.ToString() ?? "";
+        if (pendingInlineStatus == inlineStatus) return;
+
+        confirmModal!.Afficher(
+            "Confirmer le changement de statut",
+            $"Passer le statut de « {LibelleStatut(inlineStatus)} » à « {LibelleStatut(pendingInlineStatus)} » ?",
+            ConfirmerChangementStatut,
+            libelle: "Confirmer",
+            classe:  "btn-primary");
+
+        // Déclenche un re-rendu pour remettre visuellement le select sur l'ancienne valeur
+        // tant que l'utilisateur n'a pas confirmé
+        StateHasChanged();
+    }
+
+    // Applique le changement de statut après confirmation de l'agent
+    private async Task ConfirmerChangementStatut()
+    {
+        inlineStatus     = pendingInlineStatus;
+        chargementStatut = true;
+        StateHasChanged();
+
+        var request = new UpdateDemandeRequest(
+            Title:           demande!.Title,
+            Description:     demande.Description,
+            Status:          inlineStatus,
+            AssignedAgentId: demande.AssignedAgentId,
+            AssignedAt:      demande.AssignedAt);
+
+        var erreur = await DemandeApi.ModifierDemandeAsync(Id, request);
+        chargementStatut = false;
+
+        if (erreur == null)
+        {
+            Toast.Show("Statut mis à jour avec succès.", "success");
+            await ChargerDemande();
+        }
+        else
+        {
+            Toast.Show(erreur, "danger");
+            inlineStatus = demande!.Status; // revert en cas d'erreur API
+        }
+
+        // Force le re-rendu du parent car le callback est exécuté depuis ConfirmModal
+        StateHasChanged();
+    }
+
+    // Intercepte le changement d'agent, mémorise la valeur et demande confirmation
+    private void OnAgentChange(ChangeEventArgs e)
+    {
+        pendingInlineAgentId = e.Value?.ToString() ?? "";
+        if (pendingInlineAgentId == inlineAgentId) return;
+
+        var oldName = agents.FirstOrDefault(a => a.Id.ToString() == inlineAgentId)?.Name ?? "Aucun";
+        var newName = agents.FirstOrDefault(a => a.Id.ToString() == pendingInlineAgentId)?.Name ?? "Aucun";
+
+        confirmModal!.Afficher(
+            "Confirmer l'assignation",
+            $"Assigner ce ticket à « {newName} » (actuellement : « {oldName} ») ?",
+            ConfirmerChangementAgent,
+            libelle: "Confirmer",
+            classe:  "btn-primary");
+
+        StateHasChanged();
+    }
+
+    // Applique le changement d'agent après confirmation de l'agent
+    private async Task ConfirmerChangementAgent()
+    {
+        inlineAgentId   = pendingInlineAgentId;
+        chargementAgent = true;
+        StateHasChanged();
+
+        Guid? agentId = Guid.TryParse(inlineAgentId, out var g) ? g : null;
+
+        var request = new UpdateDemandeRequest(
+            Title:           demande!.Title,
+            Description:     demande.Description,
+            Status:          demande.Status,
+            AssignedAgentId: agentId,
+            AssignedAt:      agentId.HasValue ? (demande.AssignedAt ?? DateTime.UtcNow) : null);
+
+        var erreur = await DemandeApi.ModifierDemandeAsync(Id, request);
+        chargementAgent = false;
+
+        if (erreur == null)
+        {
+            var msg = agentId.HasValue ? "Ticket assigné avec succès." : "Assignation retirée.";
+            Toast.Show(msg, "success");
+            await ChargerDemande();
+        }
+        else
+        {
+            Toast.Show(erreur, "danger");
+            inlineAgentId = demande!.AssignedAgentId?.ToString() ?? ""; // revert en cas d'erreur API
+        }
+
+        StateHasChanged();
+    }
 
     // Traduit le statut API en libellé lisible
     private static string LibelleStatut(string status) => status switch

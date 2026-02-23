@@ -1,0 +1,441 @@
+@page "/dashboard"
+@attribute [Authorize(Roles = "ROLE_AGENT")]
+@implements IAsyncDisposable
+@inject DemandeApiService DemandeApi
+@inject IJSRuntime JS
+
+@if (chargement)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 text-muted">Chargement du tableau de bord…</p>
+    </div>
+}
+else
+{
+    <!-- Conteneur principal : occupe 100% de .app-main (height fixe via body.dashboard-mode) -->
+    <div class="db-page">
+
+        <!-- ── En-tête compact ─────────────────────────────────────────── -->
+        <div class="db-header">
+            <div>
+                <h3 class="db-title">Tableau de bord</h3>
+                <p class="db-subtitle">Vue d'ensemble de l'activité des tickets</p>
+            </div>
+            <span class="db-date">@dateAujourdhui</span>
+        </div>
+
+        <!-- ── Section 1 : KPI Cards ───────────────────────────────────── -->
+        <div class="row g-3 db-kpi-row">
+
+            <!-- KPI 1 : Total tickets -->
+            <div class="col-md-4">
+                <div class="kpi-card kpi-blue">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="kpi-icon-wrap"><i class="bi bi-ticket-detailed-fill"></i></div>
+                        <span class="kpi-delta @(evolutionTotal >= 0 ? "kpi-delta-up" : "kpi-delta-down")">
+                            @(evolutionTotal >= 0 ? "↑" : "↓") @Math.Abs(evolutionTotal)%
+                            <span class="kpi-delta-label">vs sem. préc.</span>
+                        </span>
+                    </div>
+                    <div class="kpi-value">@totalTickets</div>
+                    <div class="kpi-label">Total tickets</div>
+                    <div class="kpi-sparkline-wrap">
+                        @if (!string.IsNullOrEmpty(sparklineTotal))
+                        {
+                            <svg width="100%" height="24" viewBox="0 0 80 24" preserveAspectRatio="none">
+                                <polyline fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"
+                                          stroke-linecap="round" stroke-linejoin="round"
+                                          points="@sparklineTotal" />
+                            </svg>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI 2 : Résolus aujourd'hui -->
+            <div class="col-md-4">
+                <div class="kpi-card kpi-green">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="kpi-icon-wrap"><i class="bi bi-check-circle-fill"></i></div>
+                        <span class="kpi-delta @(evolutionResolus >= 0 ? "kpi-delta-up" : "kpi-delta-down")">
+                            @(evolutionResolus >= 0 ? "↑" : "↓") @Math.Abs(evolutionResolus)%
+                            <span class="kpi-delta-label">vs hier</span>
+                        </span>
+                    </div>
+                    <div class="kpi-value">@ticketsResolusAujourdhui</div>
+                    <div class="kpi-label">Résolus aujourd'hui</div>
+                    <div class="kpi-sparkline-wrap">
+                        @if (!string.IsNullOrEmpty(sparklineResolus))
+                        {
+                            <svg width="100%" height="24" viewBox="0 0 80 24" preserveAspectRatio="none">
+                                <polyline fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"
+                                          stroke-linecap="round" stroke-linejoin="round"
+                                          points="@sparklineResolus" />
+                            </svg>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI 3 : Temps moyen de résolution -->
+            <div class="col-md-4">
+                <div class="kpi-card kpi-orange">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="kpi-icon-wrap"><i class="bi bi-clock-fill"></i></div>
+                        <span class="kpi-info">
+                            @terminesCount ticket@(terminesCount != 1 ? "s" : "") résolu@(terminesCount != 1 ? "s" : "")
+                        </span>
+                    </div>
+                    <div class="kpi-value">@tempsMoyenResolution</div>
+                    <div class="kpi-label">Temps moyen de résolution</div>
+                    <div class="kpi-sparkline-wrap">
+                        @if (!string.IsNullOrEmpty(sparklineTemps))
+                        {
+                            <svg width="100%" height="24" viewBox="0 0 80 24" preserveAspectRatio="none">
+                                <polyline fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"
+                                          stroke-linecap="round" stroke-linejoin="round"
+                                          points="@sparklineTemps" />
+                            </svg>
+                        }
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ── Sections 2 & 3 : Graphiques ────────────────────────────── -->
+        <div class="db-charts-area">
+
+            <!-- Ligne 1 : graphique ligne + donut -->
+            <div class="db-chart-row db-row-top">
+
+                <!-- Évolution 7 jours (ligne) -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <span class="chart-card-title">
+                            <i class="bi bi-graph-up text-primary me-2"></i>Évolution sur 7 jours
+                        </span>
+                        <span class="chart-card-subtitle">Tickets créés par jour</span>
+                    </div>
+                    <div class="chart-card-body db-canvas-wrap">
+                        <canvas id="chart-evolution"></canvas>
+                    </div>
+                </div>
+
+                <!-- Répartition par statut (donut) -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <span class="chart-card-title">
+                            <i class="bi bi-pie-chart-fill text-warning me-2"></i>Répartition par statut
+                        </span>
+                        <span class="chart-card-subtitle">Tous les tickets actifs</span>
+                    </div>
+                    <div class="chart-card-body db-canvas-wrap db-donut-wrap">
+                        @if (dataStatuts.Any(v => v > 0))
+                        {
+                            <canvas id="chart-statuts"></canvas>
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center align-self-center">Aucune donnée</p>
+                        }
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Ligne 2 : barres par agent + activité récente -->
+            <div class="db-chart-row db-row-bottom">
+
+                <!-- Charge par agent (barres) -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <span class="chart-card-title">
+                            <i class="bi bi-bar-chart-fill text-info me-2"></i>Charge par agent
+                        </span>
+                        <span class="chart-card-subtitle">Tickets assignés par agent</span>
+                    </div>
+                    <div class="chart-card-body db-canvas-wrap">
+                        @if (labelsAgents.Any())
+                        {
+                            <canvas id="chart-agents"></canvas>
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center align-self-center">Aucun ticket assigné</p>
+                        }
+                    </div>
+                </div>
+
+                <!-- Activité récente : 5 derniers tickets -->
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <span class="chart-card-title">
+                            <i class="bi bi-clock-history text-secondary me-2"></i>Activité récente
+                        </span>
+                        <span class="chart-card-subtitle">5 derniers tickets créés</span>
+                    </div>
+                    <div class="chart-card-body p-0 db-recent-body">
+                        @if (!derniersTickets.Any())
+                        {
+                            <p class="text-muted text-center py-4">Aucun ticket</p>
+                        }
+                        else
+                        {
+                            <ul class="ticket-recent-list">
+                                @foreach (var t in derniersTickets)
+                                {
+                                    <li class="ticket-recent-item">
+                                        <a href="/demandes/@t.Id" class="ticket-recent-link">
+                                            <div class="ticket-recent-top">
+                                                <span class="ticket-recent-title" title="@t.Title">@t.Title</span>
+                                                <span class="badge badge-statut @ClasseStatut(t.Status)">
+                                                    @LibelleStatut(t.Status)
+                                                </span>
+                                            </div>
+                                            <div class="ticket-recent-bottom">
+                                                <span class="@ClassePriorite(t)">
+                                                    <i class="bi bi-flag-fill me-1"></i>@LibellePriorite(t)
+                                                </span>
+                                                <span class="ticket-recent-date">
+                                                    @t.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")
+                                                </span>
+                                            </div>
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+}
+
+@code {
+
+    private bool chargement           = true;
+    private bool graphiquesInitialises = false;
+
+    private string dateAujourdhui = "";
+
+    // Données brutes
+    private List<DemandeDto> demandes        = new List<DemandeDto>();
+    private List<DemandeDto> derniersTickets = new List<DemandeDto>();
+
+    // ─── KPI ──────────────────────────────────────────────────────────────────
+    private int    totalTickets;
+    private int    ticketsResolusAujourdhui;
+    private int    terminesCount;
+    private string tempsMoyenResolution = "—";
+    private double evolutionTotal;
+    private double evolutionResolus;
+
+    // Sparklines SVG (points, viewport 80×24)
+    private string sparklineTotal   = "";
+    private string sparklineResolus = "";
+    private string sparklineTemps   = "";
+
+    // ─── Données Chart.js ─────────────────────────────────────────────────────
+    private List<string> labelsJours   = new List<string>();
+    private List<int>    dataEvolution = new List<int>();
+    private List<string> labelsAgents  = new List<string>();
+    private List<int>    dataAgents    = new List<int>();
+    private List<int>    dataStatuts   = new List<int>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        dateAujourdhui = DateTime.Now.ToString(
+            "dddd d MMMM yyyy",
+            new System.Globalization.CultureInfo("fr-FR"));
+
+        await ChargerDonnees();
+    }
+
+    // Charge et calcule toutes les métriques depuis l'API
+    private async Task ChargerDonnees()
+    {
+        chargement = true;
+        demandes   = await DemandeApi.GetDemandesAsync() ?? new List<DemandeDto>();
+
+        var today = DateTime.Now.Date;
+
+        // Total
+        totalTickets = demandes.Count;
+
+        // Résolus aujourd'hui
+        ticketsResolusAujourdhui = demandes.Count(d =>
+            d.Status == "Terminé"
+            && d.UpdatedAt.HasValue
+            && d.UpdatedAt.Value.ToLocalTime().Date == today);
+
+        // Temps moyen de résolution
+        var termines = demandes
+            .Where(d => d.Status == "Terminé" && d.UpdatedAt.HasValue)
+            .ToList();
+
+        terminesCount = termines.Count;
+
+        if (termines.Any())
+        {
+            var moyH = termines.Average(d => (d.UpdatedAt!.Value - d.CreatedAt).TotalHours);
+            tempsMoyenResolution = moyH < 1
+                ? $"{(int)(moyH * 60)} min"
+                : moyH < 48 ? $"{moyH:F1} h" : $"{moyH / 24:F1} j";
+        }
+
+        // Évolution total (semaine courante vs précédente)
+        int cettesSemaine    = demandes.Count(d => d.CreatedAt.ToLocalTime().Date >= today.AddDays(-6));
+        int semainePrecedente = demandes.Count(d =>
+        {
+            var date = d.CreatedAt.ToLocalTime().Date;
+            return date >= today.AddDays(-13) && date < today.AddDays(-6);
+        });
+        evolutionTotal = semainePrecedente > 0
+            ? Math.Round((cettesSemaine - semainePrecedente) * 100.0 / semainePrecedente, 1)
+            : cettesSemaine > 0 ? 100 : 0;
+
+        // Évolution résolus (aujourd'hui vs hier)
+        int resolusHier = demandes.Count(d =>
+            d.Status == "Terminé"
+            && d.UpdatedAt.HasValue
+            && d.UpdatedAt.Value.ToLocalTime().Date == today.AddDays(-1));
+        evolutionResolus = resolusHier > 0
+            ? Math.Round((ticketsResolusAujourdhui - resolusHier) * 100.0 / resolusHier, 1)
+            : ticketsResolusAujourdhui > 0 ? 100 : 0;
+
+        // Sparklines (7 jours)
+        var ptTotal = Enumerable.Range(0, 7)
+            .Select(i => demandes.Count(d => d.CreatedAt.ToLocalTime().Date == today.AddDays(-6 + i)))
+            .ToList();
+        var ptResolus = Enumerable.Range(0, 7)
+            .Select(i => demandes.Count(d =>
+                d.Status == "Terminé"
+                && d.UpdatedAt.HasValue
+                && d.UpdatedAt.Value.ToLocalTime().Date == today.AddDays(-6 + i)))
+            .ToList();
+        var ptTemps = Enumerable.Range(0, 7).Select(i =>
+        {
+            var h = termines
+                .Where(d => d.UpdatedAt!.Value.ToLocalTime().Date == today.AddDays(-6 + i))
+                .Select(d => (d.UpdatedAt!.Value - d.CreatedAt).TotalHours).ToList();
+            return h.Any() ? (int)h.Average() : 0;
+        }).ToList();
+
+        sparklineTotal   = SvgPoints(ptTotal,   80, 24);
+        sparklineResolus = SvgPoints(ptResolus, 80, 24);
+        sparklineTemps   = SvgPoints(ptTemps,   80, 24);
+
+        // Chart.js : évolution 7 jours
+        labelsJours   = Enumerable.Range(0, 7)
+            .Select(i => today.AddDays(-6 + i).ToString("dd/MM"))
+            .ToList();
+        dataEvolution = ptTotal;
+
+        // Chart.js : charge par agent (top 7)
+        var parAgent  = demandes
+            .GroupBy(d => d.AssignedAgent?.Name ?? "Non assigné")
+            .OrderByDescending(g => g.Count()).Take(7).ToList();
+        labelsAgents  = parAgent.Select(g => g.Key).ToList();
+        dataAgents    = parAgent.Select(g => g.Count()).ToList();
+
+        // Chart.js : répartition statuts
+        dataStatuts = new List<int>
+        {
+            demandes.Count(d => d.Status == "EnAttente"),
+            demandes.Count(d => d.Status == "EnCours"),
+            demandes.Count(d => d.Status == "Terminé")
+        };
+
+        // 5 derniers tickets
+        derniersTickets = demandes.OrderByDescending(d => d.CreatedAt).Take(5).ToList();
+
+        chargement = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Injecte body.dashboard-mode → overrides CSS layout pour 100vh sans scroll
+            await JS.InvokeVoidAsync("dashboard.setDashboardMode", true);
+        }
+
+        if (!graphiquesInitialises && !chargement)
+        {
+            graphiquesInitialises = true;
+            await InitialiserGraphiques();
+        }
+    }
+
+    // Retire body.dashboard-mode quand on quitte la page dashboard
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("dashboard.setDashboardMode", false); }
+        catch { /* ignore : circuit possiblement déjà fermé */ }
+    }
+
+    private async Task InitialiserGraphiques()
+    {
+        await JS.InvokeVoidAsync("dashboard.initEvolution", labelsJours, dataEvolution);
+
+        if (labelsAgents.Any())
+            await JS.InvokeVoidAsync("dashboard.initAgents", labelsAgents, dataAgents);
+
+        if (dataStatuts.Any(v => v > 0))
+            await JS.InvokeVoidAsync("dashboard.initStatuts",
+                new[] { "En attente", "En cours", "Terminé" },
+                dataStatuts,
+                new[] { "#f59e0b", "#0ea5e9", "#10b981" });
+    }
+
+    // Génère les coordonnées SVG pour un sparkline (W×H pixels)
+    private static string SvgPoints(List<int> data, int W, int H)
+    {
+        if (data == null || data.Count < 2) return "";
+        int max = data.Max(), min = data.Min();
+        int range = max == min ? 1 : max - min;
+        return string.Join(" ", data.Select((v, i) =>
+        {
+            double x = i * (W - 1.0) / (data.Count - 1);
+            double y = (H - 3) - (v - min) * (H - 6.0) / range + 1;
+            return $"{x:F1},{y:F1}";
+        }));
+    }
+
+    // Priorité dérivée de l'ancienneté (pas de champ priorité dans le modèle de données)
+    private static string LibellePriorite(DemandeDto d)
+    {
+        if (d.Status == "Terminé") return "—";
+        var age = (DateTime.UtcNow - d.CreatedAt).TotalDays;
+        return age > 3 ? "Haute" : age > 1 ? "Normale" : "Basse";
+    }
+
+    private static string ClassePriorite(DemandeDto d) => LibellePriorite(d) switch
+    {
+        "Haute"   => "badge-prio-haute",
+        "Normale" => "badge-prio-normale",
+        "Basse"   => "badge-prio-basse",
+        _         => "text-muted"
+    };
+
+    private static string LibelleStatut(string s) => s switch
+    {
+        "EnAttente" => "En attente",
+        "EnCours"   => "En cours",
+        "Terminé"   => "Terminé",
+        _           => s
+    };
+
+    private static string ClasseStatut(string s) => s switch
+    {
+        "EnAttente" => "bg-warning text-dark",
+        "EnCours"   => "bg-info text-dark",
+        "Terminé"   => "bg-success",
+        _           => "bg-secondary"
+    };
+}
